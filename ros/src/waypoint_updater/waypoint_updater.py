@@ -45,7 +45,7 @@ class WaypointUpdater(object):
         rospy.spin()
 
     def pose_cb(self, msg):
-        rospy.logdebug("pose_cb fired: %s", msg.header.stamp)
+        rospy.logdebug("pose_cb fired. X: %s, Y: %s, Z: %s", msg.pose.position.x, msg.pose.position.y, msg.pose.position.z)
         if self.waypoints is not None: self.find_closest_publish_lane(msg)
         pass
 
@@ -100,7 +100,7 @@ class WaypointUpdater(object):
         lane.header = self.waypoints.header
         lane.waypoints = rest_wp
         self.final_waypoints_pub.publish(lane)
-        rospy.loginfo('lane publish from %s index', i_min)
+        rospy.loginfo('lane nearest wp dist: %s, i: %s, X: %s, Y: %s', dist_min, i_min, wp.pose.pose.position.x, wp.pose.pose.position.y)
 
 
 if __name__ == '__main__':

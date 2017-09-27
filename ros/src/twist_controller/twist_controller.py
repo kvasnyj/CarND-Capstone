@@ -1,67 +1,103 @@
 
-import rospy
-from pid import PID
+import math
 from yaw_controller import YawController
+from pid import PID
 from lowpass import LowPassFilter
-
 
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
+WEIGHT_PERSON = 75
+MIN_SPEED = 2.0 * ONE_MPH
 
-MIN_LINEAR_VEL = 0.0
-MAX_LINEAR_VEL = 1.0
+#STEER_Kp = 0.0
+STEER_Kp = 0.5
+STEER_Ki = 0.0
+STEER_Kd = 0.0
 
-KP = 1.0
-KI = 0.01
-KD = 0.1
+VELOCITY_Kp = 2.0
+VELOCITY_Ki = 0.0
+VELOCITY_Kd = 0.0
 
-TAU = 0.1
-TS = 0.1
+ACCEL_Kp = 0.4
+ACCEL_Ki = 0.1
+ACCEL_Kd = 0.0
+
+ACCEL_Tau = 0.5
+ACCEL_Ts = 0.02
 
 class Controller(object):
-    def __init__(self, vp):
+    def __init__(self, *args, **kwargs):
         # TODO: Implement
-        self.throttle_pid = PID(KP, KI, KD,
-                                mn=MIN_LINEAR_VEL,
-                                mx=MAX_LINEAR_VEL)
-        self.steering_filter = LowPassFilter(TAU,TS)        
-        self.angular_controller = YawController(vp.wheel_base, vp.steer_ratio, MIN_LINEAR_VEL, 
-                                                vp.max_lat_accel, vp.max_steer_angle)
- 
-        # Initiate Time
-        self.last_time = -1.0
+        self.vehicle_mass = args[0]
+        self.fuel_capacity = args[1]
+        self.brake_deadband = args[2]
+        self.decel_limit = args[3]
+        self.accel_limit = args[4]
+        self.wheel_radius = args[5]
+        self.wheel_base = args[6]
+        self.steer_ratio = args[7]
+        self.max_lat_accel = args[8]
+        self.max_steer_angle = args[9]
 
-    def control(self, proposed_linear_velocity, proposed_angular_velocity, 
-                current_linear_velocity, dbw_enabled):
+        self.velocity_pid = PID(VELOCITY_Kp, VELOCITY_Ki, VELOCITY_Kd, -abs(self.decel_limit), abs(self.accel_limit))
+        self.accel_pid = PID(ACCEL_Kp, ACCEL_Ki, ACCEL_Kd)
+        self.steering_cntrl = YawController(self.wheel_base, self.steer_ratio, MIN_SPEED, self.max_lat_accel, self.max_steer_angle)
+
+        self.accel_lpf = LowPassFilter(ACCEL_Tau, ACCEL_Ts)
+        #pass
+
+    def control(self, *args, **kwargs):
         # TODO: Change the arg, kwarg list to suit your needs
         # Return throttle, brake, steer
+        #return 1., 0., 0.
+        current_time = args[0]
+        last_cmd_time = args[1]
+        control_period = args[2]
+        twist_cmd = args[3]
+        current_velocity = args[4]
+        dbw_enabled = args[5]
 
+        if (current_time - last_cmd_time) > 10 * control_period:
+            self.velocity_pid.reset()
+            self.accel_pid.reset()
 
-        throttle = 0.0
-        brake = 0.0
-        steering =0.0
-        
-        time_now = rospy.get_time() 
-        
-        if self.last_time < 0.0:
-            # first time we do nothing
-            self.last_time = self.last_time
-        else: 
-            steering = self.steering_filter.filt(self.angular_controller.get_steering(proposed_linear_velocity,
-                                                                                      proposed_angular_velocity,
-                                                                                      current_linear_velocity))
+        vehicle_mass = self.vehicle_mass + self.fuel_capacity * GAS_DENSITY + 2 * WEIGHT_PERSON
 
-            # Only update pid controller if Drive By Wire is enabled
-            if dbw_enabled:
-                throttle = self.throttle_pid.step(proposed_linear_velocity - current_linear_velocity, time_now - self.last_time )
+        velocity_error = twist_cmd.twist.linear.x - current_velocity.twist.linear.x
+
+        if abs(twist_cmd.twist.linear.x) < (1.0 * ONE_MPH):
+            self.velocity_pid.reset()
+
+        accel_cmd = self.velocity_pid.step(velocity_error, control_period)
+
+        if twist_cmd.twist.linear.x <= 1e-2:
+            accel_cmd = min(accel_cmd, -530 / vehicle_mass / self.wheel_radius)
+        elif twist_cmd.twist.linear.x < MIN_SPEED:
+            twist_cmd.twist.angular.z = twist_cmd.twist.angular.z * MIN_SPEED / twist_cmd.twist.linear.x
+            twist_cmd.twist.linear.x = MIN_SPEED
+
+        if dbw_enabled:
+            if accel_cmd >= 0:
+                throttle_val = self.accel_pid.step(accel_cmd - self.accel_lpf.get(), control_period)
             else:
-                self.throttle_pid.reset()
-        
-        self.last_time = time_now
+                throttle_val = 0.0
+                self.accel_pid.reset()
 
-        if throttle < 0:
-        	throttle = 0
-        	brake  = -throttle
+            if accel_cmd < -self.brake_deadband or twist_cmd.twist.linear.x < MIN_SPEED:
+                brake_val = -accel_cmd * vehicle_mass * self.wheel_radius
+            else:
+                brake_val = 0.0
 
-        # Return throttle, brake, steering
-        return throttle, brake, steering        
+            steering_val = self.steering_cntrl.get_steering(twist_cmd.twist.linear.x, twist_cmd.twist.angular.z, current_velocity.twist.linear.x) + STEER_Kp * (twist_cmd.twist.angular.z - current_velocity.twist.angular.z)
+
+            return throttle_val, brake_val, steering_val
+        else:
+            self.velocity_pid.reset()
+            self.accel_pid.reset()
+            return 0.0, 0.0, 0.0
+
+    def filter_accel_value(self, value):
+        self.accel_lpf.filt(value)
+
+    def get_filtered_accel(self):
+        return self.accel_lpf.get()

@@ -9,6 +9,7 @@ from cv_bridge import CvBridge
 from light_classification.tl_classifier import TLClassifier
 import tf
 import cv2
+import numpy as np
 import yaml
 
 STATE_COUNT_THRESHOLD = 3
@@ -133,12 +134,19 @@ class TLDetector(object):
         except (tf.Exception, tf.LookupException, tf.ConnectivityException):
             rospy.logerr("Failed to find camera to map transform")
 
-        #TODO Use tranform and rotation to calculate 2D position of light in image
+        # Generate Homogenous Coordinates of point in world.
+        X = [point_in_world.x, point_in_world.y, point_in_world.z, 1]
+        # Create a transformation matrix T mapping points for world coordinate frame to camera frame.
+        T = self.listener.fromTranslationRotation(trans, rot)
+        # Create camera projection matrix K with optical center at center of image.
+        K = np.array([[fx,0,image_width/2,0],[0,fy,image_height/2,0],[0,0,1,0]])
+        # Generate Homogenous Coordinates of point in camera frame
+        P = np.dot(K, np.dot(T,X))
+        # Generate pixel coordinates of point in camera frame
+        x = P[0] / P[2]
+        y = P[1] / P[2]
 
-        x = 0
-        y = 0
-
-        return (x, y)
+        return int(x), int(y)
 
     def get_light_state(self, light):
         """Determines the current color of the traffic light
@@ -158,10 +166,9 @@ class TLDetector(object):
 
         x, y = self.project_to_image_plane(light.pose.pose.position)
 
-        #TODO use light location to zoom in on traffic light in image
-
         #Get classification
-        return self.light_classifier.get_classification(cv_image)
+        light_state = self.light_classifier.get_classification(cv_image[:y,:,:])
+        return light_state
 
     def process_traffic_lights(self):
         """Finds closest visible traffic light, if one exists, and determines its

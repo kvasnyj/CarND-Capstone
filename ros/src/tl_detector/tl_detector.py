@@ -29,9 +29,6 @@ def coordToPoseStamped(coord):
     msg.pose.position.y = coord[1]
     return msg
 
-def floor(array, n):
-    pass
-
 class TLDetector(object):
     def __init__(self):
         rospy.init_node('tl_detector')
@@ -150,18 +147,17 @@ class TLDetector(object):
             - Should memoize light_waypoints to avoid extra computation
             - Consider car heading to handle edge cases where the car goes off-road
             - Should handle cases where waypoint is None
+
+ [[1148.56, 1184.65], [1559.2, 1158.43], [2122.14, 1526.79], [2175.237, 1795.71], [1493.29, 2947.67], [821.96, 2905.8], [161.76, 2303.82], [351.84, 1574.65]]
         """
         light_waypoints = []
         for idx, stop_light in enumerate(stop_line_positions):
             stop_light_pose = coordToPoseStamped(stop_light)
             light_waypoints.append(self.get_closest_waypoint(stop_light_pose.pose)) # [292, 753, 2047, 2580, 6294, 7008, 8540, 9733]
 
-        if car_position > max(light_waypoints):         # loop through
-            return light_waypoints[0], 0
-        else:
-            for i, light_wp in enumerate(light_waypoints):
-                if light_wp > car_position and light_wp - car_position < HORIZON:
-                    return light_wp, i
+        for i, light_wp in enumerate(light_waypoints):
+            if light_wp > car_position and light_wp - car_position < HORIZON:
+                return light_wp, i
         return -1, -1
 
     def project_to_image_plane(self, point_in_world):
@@ -239,6 +235,9 @@ class TLDetector(object):
 
         """
         light = None
+        light_wp = -1
+        car_position = None
+        light_idx = -1
 
         # List of positions that correspond to the line to stop in front of for a given intersection
         stop_line_positions = self.config['stop_line_positions']
@@ -246,14 +245,16 @@ class TLDetector(object):
         if (self.pose):
             car_position = self.get_closest_waypoint(self.pose.pose)
 
-        light_wp, light_idx = self.get_next_visible_light_waypoint(car_position, stop_line_positions)
+        if car_position:
+            light_wp, light_idx = self.get_next_visible_light_waypoint(car_position, stop_line_positions)
 
         if light_wp > -1:
             light = self.lights[light_idx]
 
+        rospy.loginfo("CAR_POS: %s, 'LIGHT_WP: %s', IDX: %s", car_position, stop_line_positions[light_idx], light_wp)
+
         if light:
             state = self.get_light_state(light)
-            # rospy.loginfo("LIGHT: %s, STATE: %s, CAR_POS: %s, IDX: %s", light, state, car_position, light_idx)
             return light_wp, state
         return -1, TrafficLight.UNKNOWN
 

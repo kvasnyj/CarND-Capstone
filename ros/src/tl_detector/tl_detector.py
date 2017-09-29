@@ -29,6 +29,9 @@ def coordToPoseStamped(coord):
     msg.pose.position.y = coord[1]
     return msg
 
+def floor(array, n):
+    pass
+
 class TLDetector(object):
     def __init__(self):
         rospy.init_node('tl_detector')
@@ -149,21 +152,17 @@ class TLDetector(object):
             - Should handle cases where waypoint is None
         """
         light_waypoints = []
-        for stop_light in stop_line_positions:
+        for idx, stop_light in enumerate(stop_line_positions):
             stop_light_pose = coordToPoseStamped(stop_light)
             light_waypoints.append(self.get_closest_waypoint(stop_light_pose.pose)) # [292, 753, 2047, 2580, 6294, 7008, 8540, 9733]
 
         if car_position > max(light_waypoints):         # loop through
-            light_wp = min(light_waypoints)
+            return light_waypoints[0], 0
         else:
-            possibly_light_wp = filter(lambda x: x > car_position, light_waypoints)[0]
-            if possibly_light_wp - car_position > HORIZON:          # too far away and therefore no visible weights
-                light_wp = -1
-            else:
-                light_wp = possibly_light_wp
-
-        rospy.loginfo("CAR_POS: %s  NEXT_LIGHT: %s WAYPOINTS: %s", car_position, light_wp, light_waypoints)
-        return light_wp
+            for i, light_wp in enumerate(light_waypoints):
+                if light_wp > car_position and light_wp - car_position < HORIZON:
+                    return light_wp, i
+        return -1, -1
 
     def project_to_image_plane(self, point_in_world):
         """Project point from 3D world coordinates to 2D camera image location
@@ -247,12 +246,15 @@ class TLDetector(object):
         if (self.pose):
             car_position = self.get_closest_waypoint(self.pose.pose)
 
-        light_wp = self.get_next_visible_light_waypoint(car_position, stop_line_positions)
+        light_wp, light_idx = self.get_next_visible_light_waypoint(car_position, stop_line_positions)
+
+        if light_wp > -1:
+            light = self.lights[light_idx]
 
         if light:
             state = self.get_light_state(light)
+            # rospy.loginfo("LIGHT: %s, STATE: %s, CAR_POS: %s, IDX: %s", light, state, car_position, light_idx)
             return light_wp, state
-        # self.waypoints = None
         return -1, TrafficLight.UNKNOWN
 
 if __name__ == '__main__':

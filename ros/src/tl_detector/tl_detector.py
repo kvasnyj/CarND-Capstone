@@ -155,7 +155,7 @@ class TLDetector(object):
             - Should memoize light_waypoints to avoid extra computation
             - Consider car heading to handle edge cases where the car goes off-road
             - Should handle cases where waypoint is None
- [[1148.56, 1184.65], [1559.2, 1158.43], [2122.14, 1526.79], [2175.237, 1795.71], [1493.29, 2947.67], [821.96, 2905.8], [161.76, 2303.82], [351.84, 1574.65]]
+            [[1148.56, 1184.65], [1559.2, 1158.43], [2122.14, 1526.79], [2175.237, 1795.71], [1493.29, 2947.67], [821.96, 2905.8], [161.76, 2303.82], [351.84, 1574.65]]
         """
         light_waypoints = []
         for idx, stop_light in enumerate(stop_line_positions):

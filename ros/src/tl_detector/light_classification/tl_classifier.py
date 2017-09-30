@@ -3,9 +3,15 @@ import numpy as np
 import cv2
 
 class TLClassifier(object):
-    def __init__(self):
-        #TODO load classifier
-        pass
+    def __init__(self, max_row, threshold):
+        """Traffic light classifier constructor.
+
+        Args:
+          max_row: Maximum row in image considered during traffic light state classification. 
+          threshold: Threshold for the fraction of image pixels necessary to declare traffic light a specific color 
+        """
+        self.max_row = max_row
+        self.threshold = threshold
 
     def get_classification(self, image):
         """Determines the color of the traffic light in the image
@@ -18,20 +24,25 @@ class TLClassifier(object):
 
         """
         # Normalize by number of pixels in image
-        num_pixels = image.shape[0] * image.shape[1]
+        num_pixels = float(self.max_row) * image.shape[1]
 
         # Thresholded Red Channel
-        _, r_img = cv2.threshold(image[:,:,2], 225, 1, cv2.THRESH_BINARY)
+        _, r_img = cv2.threshold(image[:self.max_row,:,2], 230, 255, cv2.THRESH_BINARY)
         # Thresholded Green Channel
-        _, g_img = cv2.threshold(image[:,:,1], 225, 1, cv2.THRESH_BINARY)
+        _, g_img = cv2.threshold(image[:self.max_row,:,1], 245, 255, cv2.THRESH_BINARY)
         # Thresholded Yellow Channel
-        y_img = r_img * g_img
+        y_img = (r_img > 0.) * (g_img > 0.) * 255.0 
+        
+        # Determine fraction of thresholeded image with pixels exceeding threshold.
+        r_frac = (np.sum(r_img)/num_pixels)
+        g_frac = (np.sum(g_img)/num_pixels)
+        y_frac = (np.sum(y_img)/num_pixels)
 
-        if np.sum(y_img.astype(float))/num_pixels > 0.001:
+        if y_frac > self.threshold:
             return TrafficLight.YELLOW
-        elif np.sum(g_img.astype(float))/num_pixels > 0.001:
-            return TrafficLight.GREEN
-        elif np.sum(r_img.astype(float))/num_pixels > 0.001:
+        elif r_frac > self.threshold:
             return TrafficLight.RED
+        elif g_frac > self.threshold:
+            return TrafficLight.GREEN
         else:
             return TrafficLight.UNKNOWN

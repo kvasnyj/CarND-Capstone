@@ -14,7 +14,7 @@ import numpy as np
 import yaml
 
 STATE_COUNT_THRESHOLD = 3
-HORIZON = 50
+HORIZON = 100
 
 # Constants for where to save camera images if debugging.
 DEBUG = False
@@ -42,6 +42,9 @@ def coordToPoseStamped(coord):
     return msg
 
 class TLDetector(object):
+
+    lights2waypoint = {}
+
     def __init__(self):
         rospy.init_node('tl_detector')
 
@@ -152,19 +155,19 @@ class TLDetector(object):
         Returns:
             light_wp (Int): visible light waypoint -1 if not found
         TODO:
-            - Should memoize light_waypoints to avoid extra computation
-            - Consider car heading to handle edge cases where the car goes off-road
+            - Consider car's heading to handle edge cases where the car goes off-road or drive backward
             - Should handle cases where waypoint is None
             [[1148.56, 1184.65], [1559.2, 1158.43], [2122.14, 1526.79], [2175.237, 1795.71], [1493.29, 2947.67], [821.96, 2905.8], [161.76, 2303.82], [351.84, 1574.65]]
         """
-        light_waypoints = []
         for idx, stop_light in enumerate(stop_line_positions):
             stop_light_pose = coordToPoseStamped(stop_light)
-            light_waypoints.append(self.get_closest_waypoint(stop_light_pose.pose)) # [292, 753, 2047, 2580, 6294, 7008, 8540, 9733]
 
-        for i, light_wp in enumerate(light_waypoints):
+            if TLDetector.lights2waypoint.get(idx, None) is None:
+                TLDetector.lights2waypoint[idx] = self.get_closest_waypoint(stop_light_pose.pose) # [292, 753, 2047, 2580, 6294, 7008, 8540, 9733]
+
+            light_wp = TLDetector.lights2waypoint[idx]
             if light_wp > car_position and light_wp - car_position < HORIZON:
-                return light_wp, i
+                return light_wp, idx
         return -1, -1
 
     def project_to_image_plane(self, point_in_world):
@@ -249,7 +252,7 @@ class TLDetector(object):
         # List of positions that correspond to the line to stop in front of for a given intersection
         stop_line_positions = self.config['stop_line_positions']
 
-        if (self.pose):
+        if self.pose:
             car_position = self.get_closest_waypoint(self.pose.pose)
 
         if car_position:

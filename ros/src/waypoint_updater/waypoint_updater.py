@@ -2,7 +2,8 @@
 
 import rospy
 from geometry_msgs.msg import PoseStamped
-from styx_msgs.msg import Lane, Waypoint #, Int32
+from styx_msgs.msg import Lane, Waypoint
+from std_msgs.msg import Int32
 
 import math
 
@@ -21,19 +22,24 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 200  # Number of waypoints we will publish. You can change this number
 ONE_MPH = 0.44704
+
+LOOKAHEAD_WPS = 200  # Number of waypoints we will publish. You can change this number
+TARGET_VELOCITY_MPH = 3 # Target velocity in MPH. You can change this number
+WPS_TO_TL_TO_SLOWDOWN = 10 # Disctance to traffic light (in # waypoints) to slow down 
+
 
 class WaypointUpdater(object):
     def __init__(self):
         self.waypoints = None
+	self.tf_waypoint_id = -1
 
         rospy.logdebug("WaypointUpdater started")
         rospy.init_node('waypoint_updater', log_level=rospy.DEBUG)
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
-        #rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
+        rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
         #rospy.Subscriber('/obstacle_waypoint', Int32, self.obstacle_cb)
 
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
@@ -55,6 +61,7 @@ class WaypointUpdater(object):
         pass
 
     def traffic_cb(self, msg):
+        if self.waypoints is not None: self.tf_waypoint_id = msg.data
         rospy.logdebug("traffic_cb fired")
         pass
 
@@ -97,7 +104,14 @@ class WaypointUpdater(object):
             rest_wp += waypoints[:min(LOOKAHEAD_WPS-len(rest_wp), len(waypoints))]
 
         for wp in rest_wp:
-            wp.twist.twist.linear.x = 1 * ONE_MPH
+            wp.twist.twist.linear.x = TARGET_VELOCITY_MPH * ONE_MPH
+
+        #Stopping @ red traffic light
+        if (self.tf_waypoint_id > 0):
+            distance_to_tl_in_wps = self.tf_waypoint_id - i_min	
+            if (distance_to_tl_in_wps > 0 and distance_to_tl_in_wps < min(WPS_TO_TL_TO_SLOWDOWN,LOOKAHEAD_WPS)):
+                for wp in rest_wp:
+                    wp.twist.twist.linear.x = 0 
 
         lane = Lane()
         lane.header = self.waypoints.header
@@ -105,6 +119,7 @@ class WaypointUpdater(object):
 
         self.final_waypoints_pub.publish(lane)
         rospy.loginfo('lane nearest wp dist: %s, i: %s, X: %s, Y: %s', dist_min, i_min, wp.pose.pose.position.x, wp.pose.pose.position.y)
+        rospy.loginfo('nearest wp %s, traffic_light_wp: %s', i_min, self.tf_waypoint_id)
 
 
 if __name__ == '__main__':

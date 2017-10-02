@@ -26,8 +26,6 @@ ONE_MPH = 0.44704
 
 LOOKAHEAD_WPS = 200  # Number of waypoints we will publish. You can change this number
 TARGET_VELOCITY_MPH = 20 # Target velocity in MPH. You can change this number
-WPS_TO_TL_TO_SLOWDOWN = 25 # Disctance to traffic light (in # waypoints) to slow down 
-
 
 class WaypointUpdater(object):
     def __init__(self):

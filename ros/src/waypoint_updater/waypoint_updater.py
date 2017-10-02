@@ -25,9 +25,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 ONE_MPH = 0.44704
 
 LOOKAHEAD_WPS = 200  # Number of waypoints we will publish. You can change this number
-TARGET_VELOCITY_MPH = 3 # Target velocity in MPH. You can change this number
-WPS_TO_TL_TO_SLOWDOWN = 10 # Disctance to traffic light (in # waypoints) to slow down 
-
+TARGET_VELOCITY_MPH = 20 # Target velocity in MPH. You can change this number
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -109,9 +107,17 @@ class WaypointUpdater(object):
         #Stopping @ red traffic light
         if (self.tf_waypoint_id > 0):
             distance_to_tl_in_wps = self.tf_waypoint_id - i_min	
-            if (distance_to_tl_in_wps > 0 and distance_to_tl_in_wps < min(WPS_TO_TL_TO_SLOWDOWN,LOOKAHEAD_WPS)):
+            if (distance_to_tl_in_wps > 0 and distance_to_tl_in_wps <= 5):
                 for wp in rest_wp:
-                    wp.twist.twist.linear.x = 0 
+                    wp.twist.twist.linear.x = 0  
+            if (distance_to_tl_in_wps > 5 and distance_to_tl_in_wps <= 25):
+                for wp in rest_wp:
+                    wp.twist.twist.linear.x = 3 * ONE_MPH   
+            if (distance_to_tl_in_wps > 25 and distance_to_tl_in_wps <= 35 and (TARGET_VELOCITY_MPH > 6)):
+                for wp in rest_wp:
+                    wp.twist.twist.linear.x = 0.5 *(TARGET_VELOCITY_MPH * ONE_MPH)   
+
+
 
         lane = Lane()
         lane.header = self.waypoints.header

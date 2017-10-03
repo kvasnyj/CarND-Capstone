@@ -3,15 +3,11 @@ import numpy as np
 import cv2
 
 class TLClassifier(object):
-    def __init__(self, max_row, threshold):
-        """Traffic light classifier constructor.
-
-        Args:
-          max_row: Maximum row in image considered during traffic light state classification. 
-          threshold: Threshold for the fraction of image pixels necessary to declare traffic light a specific color 
-        """
-        self.max_row = max_row
+    def __init__(self, threshold):
         self.threshold = threshold
+        self.lower_red = np.array([0,  100, 100], dtype="uint8")       # lower_red_hue_range
+        self.upper_red = np.array([10, 255, 255], dtype="uint8")       #
+
 
     def get_classification(self, image):
         """Determines the color of the traffic light in the image
@@ -22,27 +18,15 @@ class TLClassifier(object):
         Returns:
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
 
+        Ressources:
+            http://docs.opencv.org/3.0-beta/doc/py_tutorials/py_imgproc/py_colorspaces/py_colorspaces.html
+
         """
-        # Normalize by number of pixels in image
-        num_pixels = float(self.max_row) * image.shape[1]
+        hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        # Threshold the HSV image to get only green colors
+        mask = cv2.inRange(hsv_image, self.lower_red, self.upper_red)
 
-        # Thresholded Red Channel
-        _, r_img = cv2.threshold(image[:self.max_row,:,2], 230, 255, cv2.THRESH_BINARY)
-        # Thresholded Green Channel
-        _, g_img = cv2.threshold(image[:self.max_row,:,1], 245, 255, cv2.THRESH_BINARY)
-        # Thresholded Yellow Channel
-        y_img = (r_img > 0.) * (g_img > 0.) * 255.0 
-        
-        # Determine fraction of thresholeded image with pixels exceeding threshold.
-        r_frac = (np.sum(r_img)/num_pixels)
-        g_frac = (np.sum(g_img)/num_pixels)
-        y_frac = (np.sum(y_img)/num_pixels)
-
-        if y_frac > self.threshold:
-            return TrafficLight.YELLOW
-        elif r_frac > self.threshold:
+        if cv2.countNonZero(mask) > self.threshold:
             return TrafficLight.RED
-        elif g_frac > self.threshold:
-            return TrafficLight.GREEN
-        else:
-            return TrafficLight.UNKNOWN
+
+        return TrafficLight.UNKNOWN

@@ -7,11 +7,12 @@ from styx_msgs.msg import Lane
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 from light_classification.tl_classifier import TLClassifier
-from math import sqrt
+import math
 import tf
 import cv2
 import numpy as np
 import yaml
+import os
 
 STATE_COUNT_THRESHOLD = 3
 HORIZON = 100
@@ -33,13 +34,50 @@ def distance(pos1, pos2):
     y1 = pos1.position.y
     x2 = pos2.position.x
     y2 = pos2.position.y
-    return sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1))
+    z1 = pos1.position.z
+    z2 = pos1.position.z
+    return math.sqrt((x2-x1)**2+(y2-y1)**2+(z1-z2)**2)
 
 def coordToPoseStamped(coord):
     msg = PoseStamped()
     msg.pose.position.x = coord[0]
     msg.pose.position.y = coord[1]
     return msg
+
+def quaterion_to_euler(pose):
+    """ Get the euler angle from quaterion """
+    _, _, angle = tf.transformations.euler_from_quaternion([pose.orientation.x,
+                                                     pose.orientation.y,
+                                                     pose.orientation.z,
+                                                     pose.orientation.w])
+    return angle
+
+def is_behind(pose, waypoint):
+    """
+        Args:
+            pose (obj) - pose.position.x
+            waypoint (obj) - waypoint.position.x
+
+        Return:
+             True if the car is behind the waypoint, false otherwise
+        Ressources: https://github.com/harinando/sdc-path-planning/blob/master/src/main.cpp#L65
+    """
+    pose_x = pose.position.x
+    pose_y = pose.position.y
+    waypoint_x = waypoint.position.x
+    waypoint_y = waypoint.position.y
+    pose_yaw = quaterion_to_euler(pose)
+
+    return ((waypoint_x-pose_x) * math.cos(0 - pose_yaw) - (waypoint_y-pose_y) * math.sin(0 - pose_yaw)) > 0
+
+def saveImage(image, camera_image):
+    if not os.path.exists(IMAGE_DIR):
+        os.mkdir(IMAGE_DIR)
+
+    img_name = os.path.join(IMAGE_DIR, '%s.png' % camera_image.header.seq)
+
+    cv2.imwrite(img_name, image)
+
 
 class TLDetector(object):
 
@@ -72,7 +110,7 @@ class TLDetector(object):
         self.upcoming_red_light_pub = rospy.Publisher('/traffic_waypoint', Int32, queue_size=1)
 
         self.bridge = CvBridge()
-        self.light_classifier = TLClassifier(500, 0.1)
+        self.light_classifier = TLClassifier(100)
         self.listener = tf.TransformListener()
 
         self.state = TrafficLight.UNKNOWN
@@ -132,20 +170,25 @@ class TLDetector(object):
         Returns:
             int: index of the closest waypoint in self.waypoints
         """
-
         if self.waypoints is None:
             return 0
 
-        closestDist = float('inf')
-        closestWayPoint = 0
+        closest_dist = float('inf')
+        closest_way_point = 0
 
         for i, waypoint in enumerate(self.waypoints.waypoints):
             dist = distance(pose, waypoint.pose.pose)
-            if dist < closestDist:
-                closestDist = dist
-                closestWayPoint = i
+            if dist < closest_dist:
+                closest_dist = dist
+                closest_way_point = i
+        return closest_way_point
 
-        return closestWayPoint
+    def get_next_waypoint(self, pose):
+        closest_way_point = self.get_closest_waypoint(pose)
+        is_car_in_front = not is_behind(pose, self.waypoints.waypoints[closest_way_point].pose.pose)
+        if is_car_in_front:
+            closest_way_point += 1
+        return closest_way_point
 
     def get_next_visible_light_waypoint(self, car_position, stop_line_positions):
         """Project point from 3D world coordinates to 2D camera image location
@@ -158,6 +201,7 @@ class TLDetector(object):
             - Consider car's heading to handle edge cases where the car goes off-road or drive backward
             - Should handle cases where waypoint is None
             [[1148.56, 1184.65], [1559.2, 1158.43], [2122.14, 1526.79], [2175.237, 1795.71], [1493.29, 2947.67], [821.96, 2905.8], [161.76, 2303.82], [351.84, 1574.65]]
+            [[20.991, 22.837]]
         """
         for idx, stop_light in enumerate(stop_line_positions):
             stop_light_pose = coordToPoseStamped(stop_light)
@@ -166,7 +210,9 @@ class TLDetector(object):
                 TLDetector.lights2waypoint[idx] = self.get_closest_waypoint(stop_light_pose.pose) # [292, 753, 2047, 2580, 6294, 7008, 8540, 9733]
 
             light_wp = TLDetector.lights2waypoint[idx]
-            if light_wp > car_position and light_wp - car_position < HORIZON:
+
+            if math.fabs(light_wp - car_position) < HORIZON and \
+                    is_behind(self.waypoints.waypoints[car_position].pose.pose, self.waypoints.waypoints[light_wp].pose.pose):
                 return light_wp, idx
         return -1, -1
 
@@ -217,23 +263,34 @@ class TLDetector(object):
         Returns:
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
         """
-        if(not self.has_image):
+        if not self.has_image:
             self.prev_light_loc = None
-            return False
+            return TrafficLight.UNKNOWN
+
+        if not light:
+            return TrafficLight.UNKNOWN
 
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
-        
+        image_width = self.config['camera_info']['image_width']
+        image_height = self.config['camera_info']['image_height']
+        x, y = self.project_to_image_plane(light.pose.pose.position)
+        width = int(0.4*image_width)
+        height = int(image_height/3)
+        top = int(y - height)
+        bottom = int(y + height)
+        left = int(x - width)
+        right = int(x + width)
+        cv_image = cv_image[top:bottom, left:right]
+
+        if DEBUG:
+            cv2.circle(cv_image, (x, y), 5, (255, 255, 255), -1)
+            cv2.rectangle(cv_image, (left, bottom), (right, top), (0, 255, 0), 3)
+            saveImage(cv_image, self.camera_image)
         # Optionally save images for debugging classifications.  The image name contains
         # the state of the traffic light.  Note that due to non-synchronized messages from
         # image and traffic light callbacks the state may be stale. 
-        if DEBUG:
-            if not os.exists(IMAGE_DIR):
-                os.mkdir(IMAGE_DIR)
-            cv2.imwrite(os.joint(IMAGE_DIR, 
-                'image_state_%d_count_%d.png' % (light.state, self.image_count)), cv_image)
-            self.image_count += 1
 
-        #Get classification
+        # Get classification
         light_state = self.light_classifier.get_classification(cv_image)
         return light_state
 
@@ -248,10 +305,8 @@ class TLDetector(object):
         light_wp = -1
         car_position = None
         light_idx = -1
-
         # List of positions that correspond to the line to stop in front of for a given intersection
         stop_line_positions = self.config['stop_line_positions']
-
         if self.pose:
             car_position = self.get_closest_waypoint(self.pose.pose)
 
@@ -263,13 +318,13 @@ class TLDetector(object):
 
         if light:
             state = self.get_light_state(light)
-            
+
             if DEBUG:
-                rospy.loginfo("CAR_POS: %s, 'LIGHT_WP: %s', IDX: %s, PREDICTED STATE: %s, ACTUAL STATE: %s", 
-                    car_position, stop_line_positions[light_idx], light_wp, TRAFFIC_LIGHT_COLORS[state], 
+                rospy.loginfo("CAR_POS: %s, 'LIGHT_WP: %s', IDX: %s, PREDICTED STATE: %s, ACTUAL STATE: %s",
+                    car_position, stop_line_positions[light_idx], light_wp, TRAFFIC_LIGHT_COLORS[state],
                     TRAFFIC_LIGHT_COLORS[light.state])
             else:
-                rospy.loginfo("CAR_POS: %s, 'LIGHT_WP: %s', IDX: %s, LIGHT_STATE: %s", 
+                rospy.loginfo("CAR_POS: %s, 'LIGHT_WP: %s', IDX: %s, LIGHT_STATE: %s",
                     car_position, stop_line_positions[light_idx], light_wp, TRAFFIC_LIGHT_COLORS[state])
 
             return light_wp, state

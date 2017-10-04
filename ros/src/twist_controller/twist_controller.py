@@ -88,7 +88,7 @@ class Controller(object):
             else:
                 brake_val = 0.0
 
-            steering_val = self.steering_cntrl.get_steering(twist_cmd.twist.linear.x, twist_cmd.twist.angular.z, current_velocity.twist.linear.x) + STEER_Kp * (twist_cmd.twist.angular.z - current_velocity.twist.angular.z)
+            steering_val = self.steering_cntrl.get_steering(twist_cmd.twist.linear.x, twist_cmd.twist.angular.z, current_velocity.twist.linear.x) #+ STEER_Kp * (twist_cmd.twist.angular.z - current_velocity.twist.angular.z)
 
             return throttle_val, brake_val, steering_val
         else:

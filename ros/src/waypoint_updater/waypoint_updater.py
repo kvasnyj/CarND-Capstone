@@ -103,12 +103,12 @@ class WaypointUpdater(object):
             rospy.logwarn('No waypoints ahead')
             return
 
-        rest_wp = waypoints[i_min: min(i_min + LOOKAHEAD_WPS, len(waypoints))]
-        while len(rest_wp) < LOOKAHEAD_WPS:
-            rest_wp += waypoints[:min(LOOKAHEAD_WPS-len(rest_wp), len(waypoints))]
-
-        for wp in rest_wp:
+        rest_wp = []
+        len_wp = len(waypoints)
+        for i in range(LOOKAHEAD_WPS):
+            wp = waypoints[(i_min + i) % len_wp]
             wp.twist.twist.linear.x = TARGET_VELOCITY_MPH * ONE_MPH
+            rest_wp.append(wp)
 
         #Stopping at red traffic light
         if (self.tf_waypoint_id > 0):

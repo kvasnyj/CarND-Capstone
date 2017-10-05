@@ -103,12 +103,12 @@ class WaypointUpdater(object):
             rospy.logwarn('No waypoints ahead')
             return
 
-        rest_wp = waypoints[i_min: min(i_min + LOOKAHEAD_WPS, len(waypoints))]
-        while len(rest_wp) < LOOKAHEAD_WPS:
-            rest_wp += waypoints[:min(LOOKAHEAD_WPS-len(rest_wp), len(waypoints))]
-
-        for wp in rest_wp:
+        rest_wp = []
+        len_wp = len(waypoints)
+        for i in range(LOOKAHEAD_WPS):
+            wp = waypoints[(i_min + i) % len_wp]
             wp.twist.twist.linear.x = TARGET_VELOCITY_MPH * ONE_MPH
+            rest_wp.append(wp)
 
         #Stopping at red traffic light
         if (self.tf_waypoint_id > 0):
@@ -116,16 +116,16 @@ class WaypointUpdater(object):
             v0 = self.current_velocity
             d0 = dl(pose.pose.position, waypoints[self.tf_waypoint_id].pose.pose.position)
             rospy.loginfo('distance_to_tl_in_m %s', d0)
-            if (d0 > 0 and d0 <= 5):
+            if (d0 > 0 and d0 <= 7):
                 for wp in rest_wp:
                     wp.twist.twist.linear.x = 0
-            if (d0 > 5 and d0 <= 35):
+            if (d0 > 7 and d0 <= v0):
                 for wp in rest_wp:
                     wp.twist.twist.linear.x = 3 * ONE_MPH
-            if (d0 > 35 and d0 < 70):
+            if (d0 > v0 and d0 < 2 * v0):
                 for i in range(len(rest_wp)):
                     d = dl(rest_wp[i].pose.pose.position, waypoints[self.tf_waypoint_id].pose.pose.position)
-                    desired_speed_sqrt = v0 ** 2 - (v0 **2 - 6 ** 2) * (d0 - d)/(d0 - 35)
+                    desired_speed_sqrt = v0 ** 2 - (v0 **2 - 6 ** 2) * (d0 - d)/(d0 - v0)
                     if (desired_speed_sqrt > 0):		    	
                         rest_wp[i].twist.twist.linear.x = math.sqrt(desired_speed_sqrt) * ONE_MPH
                     else:

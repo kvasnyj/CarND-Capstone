@@ -25,7 +25,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 ONE_MPH = 0.44704
 
 LOOKAHEAD_WPS = 200  # Number of waypoints we will publish. You can change this number
-TARGET_VELOCITY_MPH = 40 # Target velocity in MPH. You can change this number
+TARGET_VELOCITY_MPH = 0.5 * rospy.get_param('/waypoint_loader/velocity') # Target velocity in MPH. You can change this number
 
 class WaypointUpdater(object):
     def __init__(self):

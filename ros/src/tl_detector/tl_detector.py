@@ -18,7 +18,7 @@ STATE_COUNT_THRESHOLD = 3
 HORIZON = 100
 
 # Constants for where to save camera images if debugging.
-DEBUG = False
+DEBUG = True
 SAVE_IMAGES = False
 IMAGE_DIR = './images'
 
@@ -90,6 +90,7 @@ class TLDetector(object):
         self.waypoints = None
         self.camera_image = None
         self.lights = []
+        self.light_classifier = None
 
         sub1 = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         sub2 = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
@@ -236,7 +237,7 @@ class TLDetector(object):
             self.prev_light_loc = None
             return TrafficLight.UNKNOWN
 
-        if not light:
+        if not light or self.light_classifier is None:
             return TrafficLight.UNKNOWN
 
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "rgb8")

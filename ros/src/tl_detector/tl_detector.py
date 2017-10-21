@@ -18,7 +18,7 @@ STATE_COUNT_THRESHOLD = 3
 HORIZON = 100
 
 # Constants for where to save camera images if debugging.
-DEBUG = True
+DEBUG = False
 SAVE_IMAGES = False
 IMAGE_DIR = './images'
 
